@@ -1,0 +1,177 @@
+_schema-version: '3.1'
+ID: MG2209Basic
+version: 1.0.0
+description: A simple CAP project.
+parameters:
+  deploy_mode: html5-repo
+  enable-parallel-deployments: true
+build-parameters:
+  before-all:
+    - builder: custom
+      commands:
+        - rm -rf build/ui-deployer
+        - mkdir -p build/ui-deployer
+        - rm -rf build/dist
+        - mkdir -p build/dist
+    - builder: custom
+      commands:
+        - npm install --production
+        - >-
+          bash -c "cds -v | grep 'cds-dk' || npm i --production --no-save
+          @sap/cds-dk @sap/mdk-tools"
+        - bash -c "export PATH=$PATH:$(pwd)/node_modules/.bin"
+        - cds build --production
+modules:
+  - name: MG2209Basic-db-deployer
+    type: hdb
+    path: gen/db
+    parameters:
+      buildpack: nodejs_buildpack
+    build-parameters:
+      builder: npm
+      ignore:
+        - node_modules
+        - package-lock.json
+    requires:
+      - name: MG2209Basic-service-uaa
+      - name: MG2209Basic-service-db
+  - name: MG2209Basic-srv
+    type: nodejs
+    path: gen/srv
+    parameters:
+      memory: 256MB
+    provides:
+      - name: srv-api
+        properties:
+          srv-url: ${default-url}
+    build-parameters:
+      builder: npm
+      ignore:
+        - node_modules
+        - package-lock.json
+    requires:
+      - name: MG2209Basic-service-uaa
+      - name: MG2209Basic-service-db
+      - name: MG2209Basic-service-destination
+      - name: MG2209Basic-service-metadata
+      - name: MG2209Basic-service-connectivity
+      - name: MG2209Basic-service-logs
+  - name: MG2209Basic-aux-destinations
+    type: com.sap.application.content
+    parameters:
+      content:
+        subaccount:
+          existing_destinations_policy: update
+          destinations:
+            - Authentication: OAuth2UserTokenExchange
+              Name: MG2209Basic-service-uaa
+              ServiceInstanceName: MG2209Basic-uaa
+              ServiceKeyName: MG2209Basic-uaa-key
+              sap.cloud.service: lcap.MG2209Basic
+            - Authentication: OAuth2UserTokenExchange
+              Name: MG2209Basic-app-srv
+              TokenServiceInstanceName: MG2209Basic-uaa
+              TokenServiceKeyName: MG2209Basic-uaa-key
+              URL: ~{srv-api/srv-url}
+              sap.cloud.service: lcap.MG2209Basic
+            - Name: MG2209Basic-service-html5-apps-repo-host
+              ServiceInstanceName: MG2209Basic-html5-apps-repo-host
+              ServiceKeyName: MG2209Basic-html5-apps-repo-host-key
+              sap.cloud.service: lcap.MG2209Basic
+    build-parameters:
+      no-source: true
+    requires:
+      - name: MG2209Basic-service-uaa
+        parameters:
+          service-key:
+            name: MG2209Basic-uaa-key
+      - name: srv-api
+      - name: MG2209Basic-service-html5-apps-repo-host
+        parameters:
+          service-key:
+            name: MG2209Basic-html5-apps-repo-host-key
+      - name: MG2209Basic-service-destination
+        parameters:
+          content-target: true
+  - name: MG2209Basic-launchpad
+    type: html5
+    path: build/launchpad
+    build-parameters:
+      builder: custom
+      commands:
+        - npm install
+        - >-
+          npx -p @ui5/cli ui5 build --dest dist
+          --include-task=generateManifestBundle
+          --include-task=generateCachebusterInfo
+        - bash -c "cd dist && npx bestzip ../../../build/dist/launchpad.zip *"
+        - rm -rf dist
+      _artifactName: launchpad.zip
+      supported-platforms: []
+      build-result: ../../build/dist
+  - name: MG2209Basic-aux-ui-deployer
+    type: com.sap.application.content
+    path: build/ui-deployer
+    build-parameters:
+      build-result: resources
+      requires:
+        - name: MG2209Basic-launchpad
+          artifacts:
+            - launchpad.zip
+          target-path: resources
+    requires:
+      - name: MG2209Basic-service-html5-apps-repo-host
+        parameters:
+          content-target: true
+resources:
+  - type: org.cloudfoundry.managed-service
+    name: MG2209Basic-service-uaa
+    parameters:
+      service: xsuaa
+      service-plan: application
+      service-name: MG2209Basic-uaa
+      path: xs-security.json
+      config:
+        xsappname: MG2209Basic-${space}
+        role-collections: []
+  - type: org.cloudfoundry.managed-service
+    name: MG2209Basic-service-db
+    parameters:
+      service: hana
+      service-plan: hdi-shared
+      service-name: MG2209Basic-db
+  - type: org.cloudfoundry.managed-service
+    name: MG2209Basic-service-destination
+    parameters:
+      service: destination
+      service-plan: lite
+      service-name: MG2209Basic-destination
+      config:
+        HTML5Runtime_enabled: true
+        version: 1.0.0
+  - type: org.cloudfoundry.user-provided-service
+    name: MG2209Basic-service-metadata
+    parameters:
+      service: metadata
+      service-plan: standard
+      service-name: MG2209Basic-metadata
+      config:
+        default-domain: ${default-domain}
+  - type: org.cloudfoundry.managed-service
+    name: MG2209Basic-service-connectivity
+    parameters:
+      service: connectivity
+      service-plan: lite
+      service-name: MG2209Basic-connectivity
+  - type: org.cloudfoundry.managed-service
+    name: MG2209Basic-service-logs
+    parameters:
+      service: application-logs
+      service-plan: lite
+      service-name: MG2209Basic-logs
+  - type: org.cloudfoundry.managed-service
+    name: MG2209Basic-service-html5-apps-repo-host
+    parameters:
+      service: html5-apps-repo
+      service-plan: app-host
+      service-name: MG2209Basic-html5-apps-repo-host

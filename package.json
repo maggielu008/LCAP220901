@@ -8,6 +8,7 @@
     "dependencies": {
         "@sap-cloud-sdk/http-client": "^2.8.0",
         "@sap-cloud-sdk/util": "^2.8.0",
+        "@sap/artifact-management": "^1.14.2",
         "@sap/cds": ">=5",
         "@sap/low-code-event-handler": "^1.1.1",
         "@sap/xsenv": "^3.3.2",
